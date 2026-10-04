@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anatomy Term Flashcard Quiz</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  *:focus-visible { outline: 3px solid #3b82f6; outline-offset: 2px; }
+  .card-container { perspective: 1000px; }
+  .card-inner { transition: transform 0.5s; transform-style: preserve-3d; position: relative; }
+  .card-inner.flipped { transform: rotateY(180deg); }
+  .card-front, .card-back { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+  .card-back { transform: rotateY(180deg); }
+</style>
+</head>
+<body class="bg-blue-50 min-h-screen py-8 px-4">
+<div class="max-w-xl mx-auto">
+  <h1 class="text-3xl font-bold text-gray-800 mb-2 text-center">Anatomy Flashcards</h1>
+  <p class="text-center text-gray-500 mb-6">Study anatomical terms across all systems</p>
+
+  <!-- Filters -->
+  <div class="flex flex-wrap gap-2 justify-center mb-5" id="filter-buttons"></div>
+
+  <!-- Mode Toggle -->
+  <div class="flex rounded-lg overflow-hidden border border-gray-200 mb-5">
+    <button id="tab-study" onclick="setMode('study')" class="flex-1 py-2.5 text-sm font-medium bg-blue-600 text-white transition-colors">Study Mode</button>
+    <button id="tab-quiz" onclick="setMode('quiz')" class="flex-1 py-2.5 text-sm font-medium bg-white text-gray-600 hover:bg-gray-50 transition-colors">Quiz Mode</button>
+    <button id="tab-missed" onclick="setMode('missed')" class="flex-1 py-2.5 text-sm font-medium bg-white text-gray-600 hover:bg-gray-50 transition-colors">Missed (<span id="missed-count">0</span>)</button>
+  </div>
+
+  <!-- Progress -->
+  <div class="bg-white rounded-xl shadow px-4 py-3 mb-5 flex items-center justify-between">
+    <span class="text-sm text-gray-500" id="progress-text">Card 0 of 0</span>
+    <div class="flex-1 mx-4 bg-gray-200 rounded-full h-2">
+      <div id="progress-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
+    </div>
+    <span class="text-sm font-semibold text-blue-600" id="progress-pct">0%</span>
+  </div>
+
+  <!-- Flashcard -->
+  <div class="card-container mb-5" style="height:220px">
+    <div class="card-inner w-full h-full" id="card-inner" style="height:220px">
+      <div class="card-front absolute inset-0 bg-white rounded-2xl shadow-lg p-6 flex flex-col items-center justify-center cursor-pointer select-none" onclick="flipCard()" role="button" aria-label="Flashcard front, click to flip" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')flipCard()">
+        <p class="text-xs font-semibold text-blue-400 uppercase tracking-widest mb-3" id="card-system"></p>
+        <p class="text-3xl font-black text-gray-800 text-center" id="card-term"></p>
+        <p class="text-gray-400 text-sm mt-4">Click to reveal definition</p>
+      </div>
+      <div class="card-back absolute inset-0 bg-blue-600 rounded-2xl shadow-lg p-6 flex flex-col items-center justify-center cursor-pointer select-none" onclick="flipCard()" role="button" aria-label="Flashcard back, click to flip" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')flipCard()">
+        <p class="text-white text-center text-base leading-relaxed font-medium" id="card-def"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Study Controls -->
+  <div id="study-controls" class="flex gap-3 mb-5">
+    <button onclick="prevCard()" class="flex-1 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 font-semibold py-3 rounded-xl transition-colors">◀ Prev</button>
+    <button onclick="nextCard()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors">Next ▶</button>
+  </div>
+
+  <!-- Quiz Controls -->
+  <div id="quiz-controls" class="hidden mb-5">
+    <p class="text-sm text-gray-500 text-center mb-3">Type the term for the definition shown on the back</p>
+    <div class="flex gap-3">
+      <input type="text" id="quiz-input" placeholder="Type the term..."
+        class="flex-1 border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-blue-500 transition"
+        onkeydown="if(event.key==='Enter')checkAnswer()" />
+      <button onclick="checkAnswer()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition-colors">Check</button>
+    </div>
+    <div id="quiz-feedback" class="hidden mt-3 text-center font-semibold rounded-xl py-2"></div>
+    <button id="quiz-next-btn" onclick="nextCard()" class="hidden mt-3 w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 rounded-xl transition-colors">Next →</button>
+  </div>
+
+  <!-- Score Panel -->
+  <div class="bg-white rounded-2xl shadow p-4">
+    <div class="grid grid-cols-3 gap-3 text-center">
+      <div><p id="stat-studied" class="text-xl font-bold text-blue-600">0</p><p class="text-xs text-gray-500">Studied</p></div>
+      <div><p id="stat-correct" class="text-xl font-bold text-green-500">0</p><p class="text-xs text-gray-500">Correct</p></div>
+      <div><p id="stat-missed" class="text-xl font-bold text-red-500">0</p><p class="text-xs text-gray-500">Missed</p></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CARDS = [
+  // Skeletal
+  { term: 'Femur', system: 'Skeletal', def: 'The thigh bone; the longest and strongest bone in the human body, connecting the hip to the knee.' },
+  { term: 'Tibia', system: 'Skeletal', def: 'The shin bone; the larger of the two bones in the lower leg, bearing most of the body\'s weight.' },
+  { term: 'Clavicle', system: 'Skeletal', def: 'The collarbone; an S-shaped bone connecting the sternum to the shoulder blade (scapula).' },
+  { term: 'Scapula', system: 'Skeletal', def: 'The shoulder blade; a flat, triangular bone at the back of the shoulder that anchors arm muscles.' },
+  { term: 'Patella', system: 'Skeletal', def: 'The kneecap; a small, flat triangular bone protecting the knee joint and improving leverage of the quadriceps.' },
+  { term: 'Sternum', system: 'Skeletal', def: 'The breastbone; a flat bone in the center of the chest to which the ribs attach via cartilage.' },
+  { term: 'Radius', system: 'Skeletal', def: 'The shorter forearm bone on the thumb side, which rotates to allow the hand to pronate and supinate.' },
+  { term: 'Ulna', system: 'Skeletal', def: 'The longer forearm bone on the pinky side; forms the point of the elbow (olecranon process).' },
+  { term: 'Humerus', system: 'Skeletal', def: 'The upper arm bone connecting the shoulder to the elbow; site of deltoid, biceps, and triceps attachment.' },
+  { term: 'Pelvis', system: 'Skeletal', def: 'A basin-shaped bony structure at the base of the spine supporting the trunk and protecting pelvic organs.' },
+  { term: 'Vertebra', system: 'Skeletal', def: 'One of the 33 interlocking bones forming the vertebral column (spine), protecting the spinal cord.' },
+  { term: 'Carpals', system: 'Skeletal', def: 'Eight small bones forming the wrist joint, arranged in two rows between the forearm and hand bones.' },
+  { term: 'Tarsals', system: 'Skeletal', def: 'Seven bones forming the ankle and heel, including the calcaneus (heel bone) and talus.' },
+  // Muscular
+  { term: 'Deltoid', system: 'Muscular', def: 'The triangular shoulder muscle responsible for abduction, flexion, and extension of the arm at the shoulder.' },
+  { term: 'Biceps', system: 'Muscular', def: 'A two-headed muscle on the front of the upper arm; flexes the elbow and supinates the forearm.' },
+  { term: 'Triceps', system: 'Muscular', def: 'The three-headed muscle on the back of the upper arm; primary extensor of the elbow joint.' },
+  { term: 'Quadriceps', system: 'Muscular', def: 'A group of four muscles on the front of the thigh that extend the knee and flex the hip.' },
+  { term: 'Hamstrings', system: 'Muscular', def: 'Three muscles on the back of the thigh (biceps femoris, semitendinosus, semimembranosus) that flex the knee and extend the hip.' },
+  { term: 'Gastrocnemius', system: 'Muscular', def: 'The large calf muscle forming the visible bulk of the lower leg; plantarflexes the foot and aids in knee flexion.' },
+  { term: 'Trapezius', system: 'Muscular', def: 'A large diamond-shaped back muscle spanning from the skull to the mid-back; elevates, retracts, and rotates the scapula.' },
+  { term: 'Pectoralis Major', system: 'Muscular', def: 'The large chest muscle that adducts, flexes, and medially rotates the arm at the shoulder joint.' },
+  { term: 'Latissimus Dorsi', system: 'Muscular', def: 'The broad back muscle ("lats") responsible for arm adduction, extension, and internal rotation at the shoulder.' },
+  { term: 'Rectus Abdominis', system: 'Muscular', def: 'The paired "six-pack" muscles running vertically on the anterior abdomen; flexes the trunk and compresses abdominal organs.' },
+  { term: 'Gluteus Maximus', system: 'Muscular', def: 'The largest gluteal muscle forming the bulk of the buttocks; extends and laterally rotates the thigh at the hip.' },
+  // Organs
+  { term: 'Heart', system: 'Organs', def: 'The muscular organ in the thoracic cavity that pumps blood through the circulatory system via four chambers and valves.' },
+  { term: 'Lungs', system: 'Organs', def: 'The paired respiratory organs in the thorax where gas exchange occurs; oxygen enters the blood and carbon dioxide is expelled.' },
+  { term: 'Liver', system: 'Organs', def: 'The largest glandular organ; metabolizes nutrients, detoxifies blood, produces bile, and synthesizes proteins.' },
+  { term: 'Kidney', system: 'Organs', def: 'Paired bean-shaped organs in the retroperitoneum that filter blood, regulate fluid balance, and produce urine.' },
+  { term: 'Spleen', system: 'Organs', def: 'An abdominal organ that filters blood, removes damaged red blood cells, and stores lymphocytes for immune response.' },
+  { term: 'Pancreas', system: 'Organs', def: 'A glandular organ with both exocrine (digestive enzymes) and endocrine (insulin and glucagon) functions.' },
+  { term: 'Gallbladder', system: 'Organs', def: 'A small sac beneath the liver that stores and concentrates bile produced by the liver for fat digestion.' },
+  { term: 'Appendix', system: 'Organs', def: 'A small finger-like pouch attached to the large intestine; thought to play a role in gut immunity.' },
+  { term: 'Small Intestine', system: 'Organs', def: 'The long, coiled tube (6–7 m) connecting the stomach to the large intestine where most nutrient absorption occurs.' },
+  { term: 'Large Intestine', system: 'Organs', def: 'The ~1.5 m tube that absorbs water and electrolytes from indigestible food matter and forms feces.' },
+  { term: 'Thyroid', system: 'Organs', def: 'A butterfly-shaped gland in the neck producing hormones that regulate metabolism, growth, and energy.' },
+  { term: 'Adrenal Glands', system: 'Organs', def: 'Paired glands atop each kidney producing adrenaline, cortisol, and aldosterone for stress response and fluid regulation.' },
+];
+
+const SYSTEMS = ['All', 'Skeletal', 'Muscular', 'Organs'];
+const systemColors = { All:'bg-gray-600 text-white', Skeletal:'bg-orange-500 text-white', Muscular:'bg-red-500 text-white', Organs:'bg-purple-500 text-white' };
+
+let mode = 'study';
+let activeFilter = 'All';
+let deck = [...CARDS];
+let missedIds = new Set();
+let idx = 0;
+let flipped = false;
+let studiedSet = new Set();
+let correct = 0;
+
+function buildFilters() {
+  const div = document.getElementById('filter-buttons');
+  SYSTEMS.forEach(s => {
+    const btn = document.createElement('button');
+    btn.textContent = s;
+    btn.id = `filter-${s}`;
+    btn.className = `px-4 py-1.5 rounded-full text-sm font-medium border-2 transition-colors ${s === 'All' ? 'border-gray-600 ' + systemColors[s] : 'border-gray-300 text-gray-600'}`;
+    btn.onclick = () => setFilter(s);
+    div.appendChild(btn);
+  });
+}
+
+function setFilter(s) {
+  activeFilter = s;
+  SYSTEMS.forEach(sys => {
+    const btn = document.getElementById(`filter-${sys}`);
+    btn.className = `px-4 py-1.5 rounded-full text-sm font-medium border-2 transition-colors ${sys === s ? 'border-transparent ' + systemColors[sys] : 'border-gray-300 text-gray-600 hover:border-gray-400'}`;
+  });
+  resetDeck();
+}
+
+function resetDeck() {
+  if (mode === 'missed') {
+    deck = CARDS.filter((_, i) => missedIds.has(i));
+  } else {
+    deck = activeFilter === 'All' ? [...CARDS] : CARDS.filter(c => c.system === activeFilter);
+  }
+  idx = 0;
+  showCard();
+}
+
+function setMode(m) {
+  mode = m;
+  ['study','quiz','missed'].forEach(tab => {
+    document.getElementById(`tab-${tab}`).className = `flex-1 py-2.5 text-sm font-medium transition-colors ${tab === m ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`;
+  });
+  document.getElementById('study-controls').classList.toggle('hidden', m !== 'study');
+  document.getElementById('quiz-controls').classList.toggle('hidden', m === 'study');
+  document.getElementById('quiz-input').value = '';
+  document.getElementById('quiz-feedback').classList.add('hidden');
+  document.getElementById('quiz-next-btn').classList.add('hidden');
+  resetDeck();
+  if (m === 'quiz') {
+    // Show back first (definition)
+    setTimeout(() => { if (!flipped) flipCard(); }, 100);
+  }
+}
+
+function showCard() {
+  if (!deck.length) {
+    document.getElementById('card-term').textContent = 'No cards';
+    document.getElementById('card-system').textContent = '';
+    document.getElementById('card-def').textContent = mode === 'missed' ? 'No missed cards yet!' : 'No cards in this filter.';
+    return;
+  }
+  const card = deck[idx];
+  document.getElementById('card-term').textContent = card.term;
+  document.getElementById('card-system').textContent = card.system;
+  document.getElementById('card-def').textContent = card.def;
+  flipped = false;
+  document.getElementById('card-inner').classList.remove('flipped');
+  if (mode === 'quiz') {
+    setTimeout(() => { if (!flipped) flipCard(); }, 200);
+    document.getElementById('quiz-input').value = '';
+    document.getElementById('quiz-input').focus();
+    document.getElementById('quiz-feedback').classList.add('hidden');
+    document.getElementById('quiz-next-btn').classList.add('hidden');
+  }
+  updateProgress();
+}
+
+function flipCard() {
+  flipped = !flipped;
+  document.getElementById('card-inner').classList.toggle('flipped', flipped);
+  if (flipped && mode === 'study') {
+    const globalIdx = CARDS.indexOf(deck[idx]);
+    studiedSet.add(globalIdx);
+    document.getElementById('stat-studied').textContent = studiedSet.size;
+  }
+}
+
+function nextCard() {
+  idx = (idx + 1) % (deck.length || 1);
+  showCard();
+}
+
+function prevCard() {
+  idx = (idx - 1 + (deck.length || 1)) % (deck.length || 1);
+  showCard();
+}
+
+function checkAnswer() {
+  const input = document.getElementById('quiz-input').value.trim();
+  const card = deck[idx];
+  const correct_ans = card.term.toLowerCase();
+  const guess = input.toLowerCase();
+  const isCorrect = guess === correct_ans || correct_ans.includes(guess) && guess.length > 2;
+  const fb = document.getElementById('quiz-feedback');
+  fb.textContent = isCorrect ? `✓ Correct! "${card.term}"` : `✗ The answer is "${card.term}"`;
+  fb.className = `mt-3 text-center font-semibold rounded-xl py-2 ${isCorrect ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`;
+  fb.classList.remove('hidden');
+  document.getElementById('quiz-next-btn').classList.remove('hidden');
+
+  const globalIdx = CARDS.indexOf(card);
+  if (isCorrect) {
+    correct++;
+    missedIds.delete(globalIdx);
+  } else {
+    missedIds.add(globalIdx);
+  }
+  studiedSet.add(globalIdx);
+  updateStats();
+
+  // Flip to show term
+  if (!flipped) flipCard();
+}
+
+function updateProgress() {
+  const total = deck.length;
+  const pct = total ? Math.round((idx + 1) / total * 100) : 0;
+  document.getElementById('progress-text').textContent = `Card ${total ? idx+1 : 0} of ${total}`;
+  document.getElementById('progress-bar').style.width = pct + '%';
+  document.getElementById('progress-pct').textContent = pct + '%';
+}
+
+function updateStats() {
+  document.getElementById('stat-studied').textContent = studiedSet.size;
+  document.getElementById('stat-correct').textContent = correct;
+  document.getElementById('stat-missed').textContent = missedIds.size;
+  document.getElementById('missed-count').textContent = missedIds.size;
+}
+
+buildFilters();
+resetDeck();
+</script>
+</body>
+</html>
